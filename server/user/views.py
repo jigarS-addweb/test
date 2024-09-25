@@ -5,6 +5,7 @@ from rest_framework import exceptions as rest_exceptions, response, decorators a
 from rest_framework_simplejwt import tokens, views as jwt_views, serializers as jwt_serializers, exceptions as jwt_exceptions
 from user import serializers, models
 
+from web3 import Web3
 
 def get_user_tokens(user):
     refresh = tokens.RefreshToken.for_user(user)
@@ -117,14 +118,32 @@ class CookieTokenRefreshView(jwt_views.TokenRefreshView):
         response["X-CSRFToken"] = request.COOKIES.get("csrftoken")
         return super().finalize_response(request, response, *args, **kwargs)
 
-
 @rest_decorators.api_view(["GET"])
 @rest_decorators.permission_classes([rest_permissions.IsAuthenticated])
 def user(request):
+    
+    # Connect to an Ethereum node (e.g., Infura, Alchemy, or local node)
+    infura_url = 'https://mainnet.infura.io/v3/d58f904bfc2544d69f5df7b71af9a480'  # Replace with your Infura project ID
+    web3 = Web3(Web3.HTTPProvider(infura_url))
+
+    balance = 0  # Initialize balance, potentially to retrieve and calculate it later
     try:
         user = models.User.objects.get(id=request.user.id)
+        if user.ethereum_wallet_address:
+
+            # Assuming the user object has a balance field, you can retrieve it like this:
+            balance_wei = web3.eth.get_balance(user.ethereum_wallet_address)
+        
+            # Convert the balance from Wei to Ether
+            balance = Web3.from_wei(balance_wei, 'ether')
+
     except models.User.DoesNotExist:
-        return response.Response(status_code=404)
+        return response.Response(status=404)
 
     serializer = serializers.UserSerializer(user)
-    return response.Response(serializer.data)
+    
+    # Adding balance to the serialized data
+    response_data = serializer.data
+    response_data['balance'] = balance
+
+    return response.Response(response_data)
